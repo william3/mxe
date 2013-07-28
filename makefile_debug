@@ -1,0 +1,4 @@
+#for debug
+OLD_SHELL := $(SHELL)
+SHELL = $(warning [$@ ($^) ($?)])$(OLD_SHELL) -x
+
