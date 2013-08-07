@@ -2,20 +2,24 @@
 # See index.html for further information.
 
 PKG             := ocaml-core
-$(PKG)_IGNORE    = $(ocaml-native_IGNORE)
-$(PKG)_VERSION   = $(ocaml-native_VERSION)
-$(PKG)_CHECKSUM  = $(ocaml-native_CHECKSUM)
-$(PKG)_SUBDIR    = $(ocaml-native_SUBDIR)
-$(PKG)_FILE      = $(ocaml-native_FILE)
-$(PKG)_URL       = $(ocaml-native_URL)
-$(PKG)_URL_2     = $(ocaml-native_URL_2)
+$(PKG)_IGNORE   :=
+$(PKG)_VERSION  := 4.03
+$(PKG)_CHECKSUM := d696bacd2cbcd0288e51c8f3633d262b88b3f814
+$(PKG)_SUBDIR   := ocaml-$($(PKG)_VERSION)
+$(PKG)_FILE     := ocaml-$($(PKG)_VERSION).tar.gz
+#$(PKG)_URL      := http://caml.inria.fr/pub/distrib/ocaml-$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
+$(PKG)_DIR      := home/per/src/mxe/
 $(PKG)_DEPS     := gcc bfd ocaml-flexdll ocaml-native
 
-define $(PKG)_UPDATE
-    echo $(ocaml-native_VERSION)
-endef
+# define $(PKG)_UPDATE
+#     $(WGET) -q -O- 'http://caml.inria.fr/download.en.html' | \
+#     $(SED) -n 's,.*ocaml-\([0-9][^>]*\)\.tar.*,\1,p' | \
+#     head -1
+# endef
 
 OTHER_LIBS := win32unix str num dynlink bigarray systhreads win32graph
+
+#      -host '$(TARGET)' 
 
 define $(PKG)_BUILD
     # Build native ocamlrun and ocamlc which contain the
@@ -32,7 +36,6 @@ define $(PKG)_BUILD
       -no-tk \
       -cc "gcc -m32" \
       -no-shared-libs \
-      -host '$(TARGET)' \
       -x11lib /usr/lib \
       -verbose
     $(MAKE) -C '$(1)' -j 1 core

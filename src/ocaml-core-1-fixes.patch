@@ -3,24 +3,353 @@ See index.html for further information.
 
 Contains ad hoc patches for cross building.
 
-From 002715e4bdd4f2aacb6ce8b1b89bae734b6c36fc Mon Sep 17 00:00:00 2001
+From e15d5e5668851db064d97ecba79511ded46d9e3a Mon Sep 17 00:00:00 2001
 From: MXE
-Date: Wed, 13 Jun 2012 22:27:54 +0200
-Subject: [PATCH] various patches to build an ocaml cross compiler
+Date: Wed, 31 Jul 2013 22:57:54 +0200
+Subject: [PATCH 01/15] asmrun/i386.S
+
+
+diff --git a/asmrun/i386.S b/asmrun/i386.S
+index 306c9a5..b8145a6 100644
+--- a/asmrun/i386.S
++++ b/asmrun/i386.S
+@@ -109,6 +109,9 @@
+         movl %esp, %ebp; \
+         call Lmcount$stub; \
+         popl %ebp; CFI_ADJUST(-4)
++#elif defined(SYS_mingw)
++#define PROFILE_CAML
++#define PROFILE_C
+ #endif
+ #else
+ #define PROFILE_CAML
+-- 
+1.8.1.2
+
+
+From e355922c3fa9599ab02ab736560b011cdd1bc555 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 22:58:20 +0200
+Subject: [PATCH 02/15] byterun/dynlink.c
+
+
+diff --git a/byterun/dynlink.c b/byterun/dynlink.c
+index f07cf91..f9453f8 100644
+--- a/byterun/dynlink.c
++++ b/byterun/dynlink.c
+@@ -78,7 +78,12 @@ static char * parse_ld_conf(void)
+ 
+   stdlib = getenv("OCAMLLIB");
+   if (stdlib == NULL) stdlib = getenv("CAMLLIB");
+-  if (stdlib == NULL) stdlib = OCAML_STDLIB_DIR;
++  if (stdlib == NULL)
++#ifdef OCAML_STDLIB_DIR
++    stdlib = OCAML_STDLIB_DIR;
++#else
++    stdlib = ".";
++#endif
+   ldconfname = caml_stat_alloc(strlen(stdlib) + 2 + sizeof(LD_CONF_NAME));
+   strcpy(ldconfname, stdlib);
+   strcat(ldconfname, "/" LD_CONF_NAME);
+-- 
+1.8.1.2
+
+
+From 01dfc2f667869a76950d2c120a554f785174f778 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 22:58:34 +0200
+Subject: [PATCH 03/15] byterun/unix.c
+
+
+diff --git a/byterun/unix.c b/byterun/unix.c
+index 491b1e7..cc300cd 100644
+--- a/byterun/unix.c
++++ b/byterun/unix.c
+@@ -13,6 +13,8 @@
+ 
+ /* Unix-specific stuff */
+ 
++#ifndef WIN32
++
+ #define _GNU_SOURCE
+            /* Helps finding RTLD_DEFAULT in glibc */
+ 
+@@ -329,3 +331,5 @@ int caml_executable_name(char * name, int name_len)
+ }
+ 
+ #endif
++
++#endif /* !WIN32 */
+-- 
+1.8.1.2
+
+
+From 5c5fbfb7225adeb174c007897763075a3cb0da23 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 22:58:45 +0200
+Subject: [PATCH 04/15] byterun/win32.c
+
+
+diff --git a/byterun/win32.c b/byterun/win32.c
+index b2fd4b7..78e9f28 100644
+--- a/byterun/win32.c
++++ b/byterun/win32.c
+@@ -11,6 +11,8 @@
+ /*                                                                     */
+ /***********************************************************************/
+ 
++#ifdef WIN32
++
+ /* Win32-specific stuff */
+ 
+ #include <windows.h>
+@@ -33,6 +35,26 @@
+ 
+ #include <flexdll.h>
+ 
++/* XXX including <io.h> gets ../byterun/io.h for some reason.
++ * Including the real io.h using the full path fails because of
++ * some strange bug in the system header file itself.  Give up and
++ * just define _finddata_t explicitly here.
++ */
++#ifndef _FSIZE_T_DEFINED
++typedef unsigned long   _fsize_t;
++#define _FSIZE_T_DEFINED
++
++struct _finddata_t
++{
++  unsigned        attrib;
++  time_t          time_create;
++  time_t          time_access;
++  time_t          time_write;
++  _fsize_t        size;
++  char            name[FILENAME_MAX];
++};
++#endif
++
+ #ifndef S_ISREG
+ #define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
+ #endif
+@@ -514,3 +536,5 @@ int caml_executable_name(char * name, int name_len)
+   if (0 == ret || ret >= name_len) return -1;
+   return 0;
+ }
++
++#endif /* WIN32 */
+-- 
+1.8.1.2
+
+
+From 1799b1a2b6209eb2ea08f39575d40a52a475472a Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 22:59:28 +0200
+Subject: [PATCH 05/15] otherlibs/Makefile.shared
+
+
+diff --git a/otherlibs/Makefile.shared b/otherlibs/Makefile.shared
+index 26416ea..630d098 100644
+--- a/otherlibs/Makefile.shared
++++ b/otherlibs/Makefile.shared
+@@ -31,7 +31,7 @@ MKLIB=$(CAMLRUN) $(ROOTDIR)/tools/ocamlmklib
+ #EXTRACFLAGS=
+ #EXTRACAMLFLAGS=
+ #LINKOPTS=
+-#LDOPTS=
++LDOPTS=-L$(LIBDIR)
+ #HEADERS=
+ 
+ CMIFILES ?= $(CAMLOBJS:.cmo=.cmi)
+@@ -40,7 +40,8 @@ CLIBNAME ?= $(LIBNAME)
+ 
+ all: lib$(CLIBNAME).$(A) $(LIBNAME).cma $(CMIFILES)
+ 
+-allopt: lib$(CLIBNAME).$(A) $(LIBNAME).cmxa $(LIBNAME).$(CMXS) $(CMIFILES)
++allopt: lib$(CLIBNAME).$(A) $(LIBNAME).cmxa $(CMIFILES)
++# $(LIBNAME).$(CMXS)
+ 
+ $(LIBNAME).cma: $(CAMLOBJS)
+ 	$(MKLIB) -o $(LIBNAME) -oc $(CLIBNAME) -ocamlc '$(CAMLC)' -linkall $(CAMLOBJS) $(LINKOPTS)
+@@ -48,8 +49,8 @@ $(LIBNAME).cma: $(CAMLOBJS)
+ $(LIBNAME).cmxa: $(CAMLOBJS_NAT)
+ 	$(MKLIB) -o $(LIBNAME) -oc $(CLIBNAME) -ocamlopt '$(CAMLOPT)' -linkall $(CAMLOBJS_NAT) $(LINKOPTS)
+ 
+-$(LIBNAME).cmxs: $(LIBNAME).cmxa lib$(CLIBNAME).$(A)
+-	$(CAMLOPT) -shared -o $(LIBNAME).cmxs -I . $(LIBNAME).cmxa
++#$(LIBNAME).cmxs: $(LIBNAME).cmxa lib$(CLIBNAME).$(A)
++#	$(CAMLOPT) -shared -o $(LIBNAME).cmxs -I . $(LIBNAME).cmxa
+ 
+ lib$(CLIBNAME).$(A): $(COBJS)
+ 	$(MKLIB) -oc $(CLIBNAME) $(COBJS) $(LDOPTS)
+-- 
+1.8.1.2
+
+
+From 0a580788acb7fe24da27a52f727cfa5d3f810aaf Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:00:38 +0200
+Subject: [PATCH 06/15] otherlibs/systhreads/Makefile.nt
+
+
+diff --git a/otherlibs/systhreads/Makefile.nt b/otherlibs/systhreads/Makefile.nt
+index 7a0df8b..8bd9d08 100644
+--- a/otherlibs/systhreads/Makefile.nt
++++ b/otherlibs/systhreads/Makefile.nt
+@@ -19,6 +19,7 @@ CAMLOPT=../../boot/ocamlrun ../../ocamlopt -I ../../stdlib -I ../win32unix
+ COMPFLAGS=-w +33 -warn-error A -g
+ MKLIB=../../boot/ocamlrun ../../tools/ocamlmklib
+ CFLAGS=-I../../byterun $(EXTRACFLAGS)
++LDOPTS=-L@libdir@
+ 
+ CAMLOBJS=thread.cmo mutex.cmo condition.cmo event.cmo threadUnix.cmo
+ CMIFILES=$(CAMLOBJS:.cmo=.cmi)
+@@ -69,6 +70,7 @@ clean: partialclean
+ install:
+ 	cp dllthreads.dll $(STUBLIBDIR)/dllthreads.dll
+ 	cp libthreads.$(A) $(LIBDIR)/libthreads.$(A)
++	cd $(LIBDIR); $(RANLIB) libthreads.$(A)
+ 	mkdir -p $(LIBDIR)/threads
+ 	cp $(CMIFILES) threads.cma $(LIBDIR)/threads
+ 	rm -f $(LIBDIR)/threads/stdlib.cma
+@@ -76,6 +78,7 @@ install:
+ 
+ installopt:
+ 	cp libthreadsnat.$(A) $(LIBDIR)/libthreadsnat.$(A)
++	cd $(LIBDIR); $(RANLIB) libthreadsnat.$(A)
+ 	cp $(THREAD_OBJS:.cmo=.cmx) threads.cmxa threads.$(A) $(LIBDIR)/threads
+ 	cp threads.cmxs $(LIBDIR)/threads
+ 
+-- 
+1.8.1.2
+
+
+From 0dba1b5c0628343bd258988d5d15b75985f0339f Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:01:42 +0200
+Subject: [PATCH 07/15] otherlibs/win32graph/Makefile.nt
+
+
+diff --git a/otherlibs/win32graph/Makefile.nt b/otherlibs/win32graph/Makefile.nt
+index f09392e..ddb189a 100644
+--- a/otherlibs/win32graph/Makefile.nt
++++ b/otherlibs/win32graph/Makefile.nt
+@@ -16,10 +16,11 @@ COBJS=open.$(O) draw.$(O) events.$(O) dib.$(O)
+ CAMLOBJS=graphics.cmo
+ WIN32LIBS=$(call SYSLIB,kernel32) $(call SYSLIB,gdi32) $(call SYSLIB,user32)
+ LINKOPTS=-cclib "\"$(WIN32LIBS)\""
+-LDOPTS=-ldopt "$(WIN32LIBS)"
+ 
+ include ../Makefile.nt
+ 
++LDOPTS=-L@libdir@ -ldopt "$(WIN32LIBS)"
++
+ graphics.ml: ../graph/graphics.ml
+ 	cp ../graph/graphics.ml graphics.ml
+ graphics.mli: ../graph/graphics.mli
+-- 
+1.8.1.2
+
+
+From 6d5225c38116954ff5f9d4e2502dfbecbfa7428e Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:01:55 +0200
+Subject: [PATCH 08/15] otherlibs/win32unix/Makefile.nt
+
+
+diff --git a/otherlibs/win32unix/Makefile.nt b/otherlibs/win32unix/Makefile.nt
+index 77555b2..ea60787 100644
+--- a/otherlibs/win32unix/Makefile.nt
++++ b/otherlibs/win32unix/Makefile.nt
+@@ -39,7 +39,6 @@ LIBNAME=unix
+ COBJS=$(ALL_FILES:.c=.$(O))
+ CAMLOBJS=unix.cmo unixLabels.cmo
+ LINKOPTS=-cclib $(WSOCKLIB)
+-LDOPTS=-ldopt $(WSOCKLIB)
+ EXTRACAMLFLAGS=-nolabels
+ EXTRACFLAGS=-I../unix
+ HEADERS=unixsupport.h socketaddr.h
+@@ -47,6 +46,8 @@ HEADERS=unixsupport.h socketaddr.h
+ 
+ include ../Makefile.nt
+ 
++LDOPTS=-L@libdir@ -ldopt $(WSOCKLIB)
++
+ clean::
+ 	rm -f $(UNIX_FILES) $(UNIX_CAML_FILES)
+ 
+-- 
+1.8.1.2
+
+
+From f428cf4aa37ed8b22ddf9dcda20132c069efc9b5 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:00:13 +0200
+Subject: [PATCH 09/15] systhread/Makefile
+
+
+diff --git a/otherlibs/systhreads/Makefile b/otherlibs/systhreads/Makefile
+index 791ae99..52be850 100644
+--- a/otherlibs/systhreads/Makefile
++++ b/otherlibs/systhreads/Makefile
+@@ -13,13 +13,13 @@
+ 
+ include ../../config/Makefile
+ 
+-CAMLC=../../ocamlcomp.sh -I ../unix
+-CAMLOPT=../../ocamlcompopt.sh -I ../unix
++CAMLC=../../ocamlcomp.sh -I ../win32unix -I ../unix
++CAMLOPT=../../ocamlcompopt.sh -I ../win32unix -I ../unix
+ MKLIB=../../boot/ocamlrun ../../tools/ocamlmklib
+ COMPFLAGS=-w +33..39 -warn-error A -g
+ 
+-BYTECODE_C_OBJS=st_stubs_b.o
+-NATIVECODE_C_OBJS=st_stubs_n.o
++BYTECODE_C_OBJS=st_stubs_b.o win32_b.o
++NATIVECODE_C_OBJS=st_stubs_n.o win32_n.o
+ 
+ THREAD_OBJS= thread.cmo mutex.cmo condition.cmo event.cmo threadUnix.cmo
+ 
+@@ -35,6 +35,10 @@ st_stubs_b.o: st_stubs.c st_posix.h
+ 	   -c st_stubs.c
+ 	mv st_stubs.o st_stubs_b.o
+ 
++win32_b.$(O): st_stubs.c st_win32.h
++	$(BYTECC) -I ../../byterun $(BYTECCCOMPOPTS) $(CFLAGS) -c st_stubs.c
++	mv st_stubs.$(O) win32_b.$(O)
++
+ # Dynamic linking with -lpthread is risky on many platforms, so
+ # do not create a shared object for libthreadsnat.
+ libthreadsnat.a: $(NATIVECODE_C_OBJS)
+@@ -44,9 +48,13 @@ st_stubs_n.o: st_stubs.c st_posix.h
+ 	$(NATIVECC) -O -I../../asmrun -I../../byterun $(NATIVECCCOMPOPTS) $(SHAREDCCCOMPOPTS) -DNATIVE_CODE -DTARGET_$(ARCH) -DSYS_$(SYSTEM) -c st_stubs.c
+ 	mv st_stubs.o st_stubs_n.o
+ 
++win32_n.$(O): st_stubs.c st_win32.h
++	$(NATIVECC) -DNATIVE_CODE -O -I../../asmrun -I../../byterun $(NATIVECCCOMPOPTS) -c st_stubs.c
++	mv st_stubs.$(O) win32_n.$(O)
++
+ threads.cma: $(THREAD_OBJS)
+ 	$(MKLIB) -ocamlc '$(CAMLC)' -o threads $(THREAD_OBJS) \
+-	  -cclib -lunix $(PTHREAD_LINK)
++	  -cclib -lunix $(PTHREAD_LINK) -lcamlrun
+ 
+ # See remark above: force static linking of libthreadsnat.a
+ threads.cmxa: $(THREAD_OBJS:.cmo=.cmx)
+-- 
+1.8.1.2
+
+
+From 4870c5aec54da43b4ff3fe2a03e02aaa596749af Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:44:58 +0200
+Subject: [PATCH 10/15] Makefile
 
 
 diff --git a/Makefile b/Makefile
-index e53fd0d..0decd00 100644
+index dae697a..b904079 100644
 --- a/Makefile
 +++ b/Makefile
-@@ -289,16 +289,17 @@ install:
- 	for i in $(OTHERLIBRARIES); do \
- 	  (cd otherlibs/$$i; $(MAKE) install) || exit $$?; \
- 	done
--	cd ocamldoc; $(MAKE) install
-+	# cd ocamldoc; $(MAKE) install
- 	if test -f ocamlopt; then $(MAKE) installopt; else :; fi
- 	if test -f debugger/ocamldebug; then (cd debugger; $(MAKE) install); \
+@@ -331,11 +331,12 @@ install:
+ 	if test -n "$(WITH_OCAMLDEBUG)"; then (cd debugger; $(MAKE) install); \
  	   else :; fi
  	cp config/Makefile $(LIBDIR)/Makefile.config
 -	BINDIR=$(BINDIR) LIBDIR=$(LIBDIR) PREFIX=$(PREFIX) \
@@ -34,8 +363,8 @@ index e53fd0d..0decd00 100644
  	cd asmrun; $(MAKE) install
  	cp ocamlopt $(BINDIR)/ocamlopt$(EXE)
  	cd stdlib; $(MAKE) installopt
-@@ -737,7 +738,7 @@ ocamlbuild.native: ocamlopt ocamlbuild-mixed-boot
- ocamlbuildlib.native: ocamlopt ocamlbuild-mixed-boot
+@@ -787,7 +788,7 @@ ocamlbuild.native: ocamlopt ocamlbuild-mixed-boot otherlibrariesopt
+ ocamlbuildlib.native: ocamlopt ocamlbuild-mixed-boot otherlibrariesopt
  	./build/ocamlbuildlib-native-only.sh
  
 -ocamlbuild-mixed-boot: ocamlc
@@ -43,12 +372,129 @@ index e53fd0d..0decd00 100644
  	./build/mixed-boot.sh
  	touch ocamlbuild-mixed-boot
  
+-- 
+1.8.1.2
+
+
+From c2b2a27e4c64d6f1f8caee623e4107b67b9e2685 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Sun, 4 Aug 2013 16:16:27 +0200
+Subject: [PATCH 11/15] Makefile : test presence of lex/ocamllex before
+ installing (case of opt build without ocamlbuild.native)
+
+
+diff --git a/Makefile b/Makefile
+index b904079..832a291 100644
+--- a/Makefile
++++ b/Makefile
+@@ -312,7 +312,7 @@ install:
+ 	cp ocamlc $(BINDIR)/ocamlc$(EXE)
+ 	cp ocaml $(BINDIR)/ocaml$(EXE)
+ 	cd stdlib; $(MAKE) install
+-	cp lex/ocamllex $(BINDIR)/ocamllex$(EXE)
++	if test -f lex/ocamllex; then cp lex/ocamllex $(BINDIR)/ocamllex$(EXE); fi
+ 	cp yacc/ocamlyacc$(EXE) $(BINDIR)/ocamlyacc$(EXE)
+ 	cp utils/*.cmi parsing/*.cmi typing/*.cmi bytecomp/*.cmi driver/*.cmi \
+ 	   toplevel/*.cmi $(COMPLIBDIR)
+-- 
+1.8.1.2
+
+
+From fd119a2580fd2b4b00bf8b2c1f143b489eecd981 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 7 Aug 2013 23:17:38 +0200
+Subject: [PATCH 12/15] Makefile : install tools/ocamlmklib only
+
+
+diff --git a/Makefile b/Makefile
+index 832a291..3b99be7 100644
+--- a/Makefile
++++ b/Makefile
+@@ -321,7 +321,9 @@ install:
+ 	   $(COMPLIBDIR)
+ 	cp expunge $(LIBDIR)/expunge$(EXE)
+ 	cp toplevel/topdirs.cmi $(LIBDIR)
+-	cd tools; $(MAKE) install
++	#only ocamlmklib compiled from ocaml-core.mk
++	#cd tools; $(MAKE) install
++	cp tools/ocamlmklib $(BINDIR)/ocamlmklib$(EXE) 
+ 	-cd man; $(MAKE) install
+ 	for i in $(OTHERLIBRARIES); do \
+ 	  (cd otherlibs/$$i; $(MAKE) install) || exit $$?; \
+-- 
+1.8.1.2
+
+
+From 3448acfd21c70ebdcbceaf30d78bc70039bf1f67 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:02:08 +0200
+Subject: [PATCH 13/15] utils/config.mlp
+
+
+diff --git a/utils/config.mlp b/utils/config.mlp
+index f77bc54..0a68afe 100644
+--- a/utils/config.mlp
++++ b/utils/config.mlp
+@@ -121,7 +121,7 @@ let print_config oc =
+   p "ext_asm" ext_asm;
+   p "ext_lib" ext_lib;
+   p "ext_dll" ext_dll;
+-  p "os_type" Sys.os_type;
++  p "os_type" "Win32";
+   p "default_executable_name" default_executable_name;
+   p_bool "systhread_supported" systhread_supported;
+   p "host" host;
+-- 
+1.8.1.2
+
+
+From 28724ddd215136e4bc5e6dfbe99b687b17aebe90 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:48:46 +0200
+Subject: [PATCH 14/15] configure : add prefix for flexlink, ...
+
+
+diff --git a/configure b/configure
+index d189d8e..d5659a8 100755
+--- a/configure
++++ b/configure
+@@ -407,7 +407,7 @@ case "$bytecc,$target" in
+         i686-*-*)   flexlink_chain="mingw";;
+         x86_64-*-*) flexlink_chain="mingw64";;
+       esac
+-      flexlink="flexlink -chain $flexlink_chain -merge-manifest -stack 16777216"
++      flexlink="${TOOLPREF}flexlink -chain $flexlink_chain -merge-manifest -stack 16777216"
+       flexdir=`$flexlink -where`
+       if test -z "$flexdir"; then
+         wrn "flexlink not found: native shared libraries won't be available."
+@@ -1803,8 +1803,8 @@ SYSLIB=-l\$(1)
+ #ml let syslib x = "-l"^x;;
+ 
+ ### How to build a static library
+-MKLIB=ar rc \$(1) \$(2); ranlib \$(1)
+-#ml let mklib out files opts = Printf.sprintf "ar rc %s %s %s; ranlib %s" out opts files out;;
++MKLIB=${TOOLPREF}ar rcs \$(1) \$(2)
++#ml let mklib out files opts = Printf.sprintf "${TOOLPREF}ar rcs %s %s %s" out opts files;;
+ EOF
+ echo "ARCH=$arch" >> Makefile
+ echo "MODEL=$model" >> Makefile
+-- 
+1.8.1.2
+
+
+From 06ab956132e697add28900ff807f89dc6bbfb82c Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Wed, 31 Jul 2013 23:02:38 +0200
+Subject: [PATCH 15/15] add files Makefile-mingw.in and
+ hardcode_mingw_include.patch
+
+
 diff --git a/Makefile-mingw.in b/Makefile-mingw.in
 new file mode 100644
-index 0000000..c3dddf6
+index 0000000..6002ae1
 --- /dev/null
 +++ b/Makefile-mingw.in
-@@ -0,0 +1,160 @@
+@@ -0,0 +1,163 @@
 +######### General configuration
 +
 +PREFIX=@prefix@
@@ -209,165 +655,9 @@ index 0000000..c3dddf6
 +BUILD_CCLIBS=-lm
 +BUILD_CFLAGS=
 +
-diff --git a/asmrun/Makefile b/asmrun/Makefile
-index d4f0c56..a535666 100644
---- a/asmrun/Makefile
-+++ b/asmrun/Makefile
-@@ -26,7 +26,7 @@ COBJS=startup.o main.o fail.o roots.o globroots.o signals.o signals_asm.o \
-   misc.o freelist.o major_gc.o minor_gc.o memory.o alloc.o compare.o ints.o \
-   floats.o str.o array.o io.o extern.o intern.o hash.o sys.o parsing.o \
-   gc_ctrl.o terminfo.o md5.o obj.o lexing.o printexc.o callback.o weak.o \
--  compact.o finalise.o custom.o unix.o backtrace.o natdynlink.o debugger.o \
-+  compact.o finalise.o custom.o unix.o win32.o backtrace.o natdynlink.o debugger.o \
-   meta.o dynlink.o
- 
- ASMOBJS=$(ARCH).o
-@@ -153,6 +153,8 @@ globroots.c: ../byterun/globroots.c
- 	ln -s ../byterun/globroots.c globroots.c
- unix.c: ../byterun/unix.c
- 	ln -s ../byterun/unix.c unix.c
-+win32.c: ../byterun/win32.c
-+	ln -s ../byterun/win32.c win32.c
- dynlink.c: ../byterun/dynlink.c
- 	ln -s ../byterun/dynlink.c dynlink.c
- signals.c: ../byterun/signals.c
-@@ -163,7 +165,7 @@ debugger.c: ../byterun/debugger.c
- LINKEDFILES=misc.c freelist.c major_gc.c minor_gc.c memory.c alloc.c array.c \
-   compare.c ints.c floats.c str.c io.c extern.c intern.c hash.c sys.c \
-   parsing.c gc_ctrl.c terminfo.c md5.c obj.c lexing.c printexc.c callback.c \
--  weak.c compact.c finalise.c meta.c custom.c main.c globroots.c unix.c \
-+  weak.c compact.c finalise.c meta.c custom.c main.c globroots.c unix.c win32.c \
-   dynlink.c signals.c debugger.c
- 
- clean::
-diff --git a/asmrun/i386.S b/asmrun/i386.S
-index e8e00a4..800247e 100644
---- a/asmrun/i386.S
-+++ b/asmrun/i386.S
-@@ -76,6 +76,9 @@
-         popl %edx; popl %ecx; popl %eax; popl %ebp
- #define PROFILE_C \
-         pushl %ebp; movl %esp, %ebp; call Lmcount$stub; popl %ebp
-+#elif defined(SYS_mingw)
-+#define PROFILE_CAML
-+#define PROFILE_C
- #endif
- #else
- #define PROFILE_CAML
-diff --git a/byterun/Makefile.common b/byterun/Makefile.common
-index b519f75..2274562 100755
---- a/byterun/Makefile.common
-+++ b/byterun/Makefile.common
-@@ -24,7 +24,7 @@ COMMONOBJS=\
-   compare.o ints.o floats.o str.o array.o io.o extern.o intern.o \
-   hash.o sys.o meta.o parsing.o gc_ctrl.o terminfo.o md5.o obj.o \
-   lexing.o callback.o debugger.o weak.o compact.o finalise.o custom.o \
--  dynlink.o
-+  dynlink.o win32.o
- 
- PRIMS=\
-   alloc.c array.c compare.c extern.c floats.c gc_ctrl.c hash.c \
-diff --git a/byterun/dynlink.c b/byterun/dynlink.c
-index 5cb2ed7..b6605fa 100644
---- a/byterun/dynlink.c
-+++ b/byterun/dynlink.c
-@@ -80,7 +80,12 @@ static char * parse_ld_conf(void)
- 
-   stdlib = getenv("OCAMLLIB");
-   if (stdlib == NULL) stdlib = getenv("CAMLLIB");
--  if (stdlib == NULL) stdlib = OCAML_STDLIB_DIR;
-+  if (stdlib == NULL)
-+#ifdef OCAML_STDLIB_DIR
-+    stdlib = OCAML_STDLIB_DIR;
-+#else
-+    stdlib = ".";
-+#endif
-   ldconfname = caml_stat_alloc(strlen(stdlib) + 2 + sizeof(LD_CONF_NAME));
-   strcpy(ldconfname, stdlib);
-   strcat(ldconfname, "/" LD_CONF_NAME);
-diff --git a/byterun/unix.c b/byterun/unix.c
-index 7d24ef4..3619e67 100644
---- a/byterun/unix.c
-+++ b/byterun/unix.c
-@@ -15,6 +15,8 @@
- 
- /* Unix-specific stuff */
- 
-+#ifndef WIN32
-+
- #define _GNU_SOURCE
-            /* Helps finding RTLD_DEFAULT in glibc */
- 
-@@ -323,3 +325,5 @@ int caml_executable_name(char * name, int name_len)
- }
- 
- #endif
-+
-+#endif /* !WIN32 */
-diff --git a/byterun/win32.c b/byterun/win32.c
-index f8ba9c9..82afc1c 100644
---- a/byterun/win32.c
-+++ b/byterun/win32.c
-@@ -13,6 +13,8 @@
- 
- /* $Id: win32.c 12686 2012-07-10 11:34:39Z scherer $ */
- 
-+#ifdef WIN32
-+
- /* Win32-specific stuff */
- 
- #include <windows.h>
-@@ -35,6 +37,26 @@
- 
- #include "flexdll.h"
- 
-+/* XXX including <io.h> gets ../byterun/io.h for some reason.
-+ * Including the real io.h using the full path fails because of
-+ * some strange bug in the system header file itself.  Give up and
-+ * just define _finddata_t explicitly here.
-+ */
-+#ifndef _FSIZE_T_DEFINED
-+typedef unsigned long   _fsize_t;
-+#define _FSIZE_T_DEFINED
-+
-+struct _finddata_t
-+{
-+  unsigned        attrib;
-+  time_t          time_create;
-+  time_t          time_access;
-+  time_t          time_write;
-+  _fsize_t        size;
-+  char            name[FILENAME_MAX];
-+};
-+#endif
-+
- #ifndef S_ISREG
- #define S_ISREG(mode) (((mode) & S_IFMT) == S_IFREG)
- #endif
-@@ -93,7 +115,7 @@ CAMLexport char * caml_search_exe_in_path(char * name)
-   pathlen = strlen(name) + 1;
-   if (pathlen < 256) pathlen = 256;
-   while (1) {
--    fullname = stat_alloc(pathlen);
-+    fullname = caml_stat_alloc(pathlen);
-     retcode = SearchPath(NULL,              /* use system search path */
-                          name,
-                          ".exe",            /* add .exe extension if needed */
-@@ -107,7 +129,7 @@ CAMLexport char * caml_search_exe_in_path(char * name)
-       break;
-     }
-     if (retcode < pathlen) break;
--    stat_free(fullname);
-+    caml_stat_free(fullname);
-     pathlen = retcode + 1;
-   }
-   return fullname;
-@@ -479,3 +501,5 @@ int caml_win32_random_seed (intnat data[16])
-   data[2] = GetCurrentProcessId();
-   return 3;
- }
-+
-+#endif /* WIN32 */
++UNIX_OR_WIN32=win32
++UNIXLIB=win32unix
++WITH_FRAME_POINTERS=false
 diff --git a/hardcode_mingw_include.patch b/hardcode_mingw_include.patch
 new file mode 100644
 index 0000000..571747d
@@ -398,257 +688,6 @@ index 0000000..571747d
 + and ocamlc = ref (compiler_path "ocamlc")
 + and ocamlopt = ref (compiler_path "ocamlopt")
 + and output = ref "a"        (* Output name for Caml part of library *)
-diff --git a/myocamlbuild.ml b/myocamlbuild.ml
-index c687242..ccdd937 100644
---- a/myocamlbuild.ml
-+++ b/myocamlbuild.ml
-@@ -107,9 +107,11 @@ let if_mixed_dir dir =
-   if mixed then ".."/dir else dir;;
- 
- let unix_dir =
--  match Sys.os_type with
--  | "Win32" -> if_mixed_dir "otherlibs/win32unix"
--  | _       -> if_mixed_dir "otherlibs/unix";;
-+  if_mixed_dir (
-+    let win32path = "otherlibs/win32unix" in
-+    if Sys.file_exists (win32path / "unix.cma") then win32path
-+    else "otherlibs/unix"
-+  );;
- 
- let threads_dir    = if_mixed_dir "otherlibs/threads";;
- let systhreads_dir = if_mixed_dir "otherlibs/systhreads";;
-diff --git a/ocamldoc/Makefile b/ocamldoc/Makefile
-index 74c82d3..61036c8 100644
---- a/ocamldoc/Makefile
-+++ b/ocamldoc/Makefile
-@@ -69,6 +69,7 @@ INCLUDES_DEP=-I $(OCAMLSRCDIR)/parsing \
- INCLUDES_NODEP=	-I $(OCAMLSRCDIR)/stdlib \
- 	-I $(OCAMLSRCDIR)/otherlibs/str \
- 	-I $(OCAMLSRCDIR)/otherlibs/dynlink \
-+	-I $(OCAMLSRCDIR)/otherlibs/win32unix \
- 	-I $(OCAMLSRCDIR)/otherlibs/unix \
- 	-I $(OCAMLSRCDIR)/otherlibs/num \
- 	-I $(OCAMLSRCDIR)/otherlibs/graph
-diff --git a/otherlibs/Makefile.shared b/otherlibs/Makefile.shared
-index 2c084a0..0e13022 100644
---- a/otherlibs/Makefile.shared
-+++ b/otherlibs/Makefile.shared
-@@ -33,7 +33,7 @@ MKLIB=$(CAMLRUN) $(ROOTDIR)/tools/ocamlmklib
- #EXTRACFLAGS=
- #EXTRACAMLFLAGS=
- #LINKOPTS=
--#LDOPTS=
-+LDOPTS=-L$(LIBDIR)
- #HEADERS=
- 
- CMIFILES ?= $(CAMLOBJS:.cmo=.cmi)
-@@ -42,7 +42,8 @@ CLIBNAME ?= $(LIBNAME)
- 
- all: lib$(CLIBNAME).$(A) $(LIBNAME).cma $(CMIFILES)
- 
--allopt: lib$(CLIBNAME).$(A) $(LIBNAME).cmxa $(LIBNAME).$(CMXS) $(CMIFILES)
-+allopt: lib$(CLIBNAME).$(A) $(LIBNAME).cmxa $(CMIFILES)
-+# $(LIBNAME).$(CMXS)
- 
- $(LIBNAME).cma: $(CAMLOBJS)
- 	$(MKLIB) -o $(LIBNAME) -oc $(CLIBNAME) -ocamlc '$(CAMLC)' -linkall $(CAMLOBJS) $(LINKOPTS)
-@@ -50,8 +51,8 @@ $(LIBNAME).cma: $(CAMLOBJS)
- $(LIBNAME).cmxa: $(CAMLOBJS_NAT)
- 	$(MKLIB) -o $(LIBNAME) -oc $(CLIBNAME) -ocamlopt '$(CAMLOPT)' -linkall $(CAMLOBJS_NAT) $(LINKOPTS)
- 
--$(LIBNAME).cmxs: $(LIBNAME).cmxa lib$(CLIBNAME).$(A)
--	$(CAMLOPT) -shared -o $(LIBNAME).cmxs -I . $(LIBNAME).cmxa
-+#$(LIBNAME).cmxs: $(LIBNAME).cmxa lib$(CLIBNAME).$(A)
-+#	$(CAMLOPT) -shared -o $(LIBNAME).cmxs -I . $(LIBNAME).cmxa
- 
- lib$(CLIBNAME).$(A): $(COBJS)
- 	$(MKLIB) -oc $(CLIBNAME) $(COBJS) $(LDOPTS)
-diff --git a/otherlibs/bigarray/Makefile b/otherlibs/bigarray/Makefile
-index d442edb..dc34d6d 100644
---- a/otherlibs/bigarray/Makefile
-+++ b/otherlibs/bigarray/Makefile
-@@ -14,8 +14,8 @@
- # $Id: Makefile 11156 2011-07-27 14:17:02Z doligez $
- 
- LIBNAME=bigarray
--EXTRACFLAGS=-I../unix -DIN_OCAML_BIGARRAY -DCAML_NAME_SPACE
--EXTRACAMLFLAGS=-I ../unix
-+EXTRACFLAGS=-I../win32unix -I../unix -DIN_OCAML_BIGARRAY -DCAML_NAME_SPACE
-+EXTRACAMLFLAGS=-I ../win32unix -I ../unix
- COBJS=bigarray_stubs.$(O) mmap_unix.$(O)
- CAMLOBJS=bigarray.cmo
- HEADERS=bigarray.h
-diff --git a/otherlibs/systhreads/Makefile b/otherlibs/systhreads/Makefile
-index 502498f..7ed53df 100644
---- a/otherlibs/systhreads/Makefile
-+++ b/otherlibs/systhreads/Makefile
-@@ -15,13 +15,13 @@
- 
- include ../../config/Makefile
- 
--CAMLC=../../ocamlcomp.sh -I ../unix
--CAMLOPT=../../ocamlcompopt.sh -I ../unix
-+CAMLC=../../ocamlcomp.sh -I ../win32unix -I ../unix
-+CAMLOPT=../../ocamlcompopt.sh -I ../win32unix -I ../unix
- MKLIB=../../boot/ocamlrun ../../tools/ocamlmklib
- COMPFLAGS=-warn-error A -g
- 
--BYTECODE_C_OBJS=st_stubs_b.o
--NATIVECODE_C_OBJS=st_stubs_n.o
-+BYTECODE_C_OBJS=st_stubs_b.o win32_b.o
-+NATIVECODE_C_OBJS=st_stubs_n.o win32_n.o
- 
- THREAD_OBJS= thread.cmo mutex.cmo condition.cmo event.cmo threadUnix.cmo
- 
-@@ -37,6 +37,10 @@ st_stubs_b.o: st_stubs.c st_posix.h
- 	   -c st_stubs.c
- 	mv st_stubs.o st_stubs_b.o
- 
-+win32_b.$(O): st_stubs.c st_win32.h
-+	$(BYTECC) -I ../../byterun $(BYTECCCOMPOPTS) $(CFLAGS) -c st_stubs.c
-+	mv st_stubs.$(O) win32_b.$(O)
-+
- # Dynamic linking with -lpthread is risky on many platforms, so
- # do not create a shared object for libthreadsnat.
- libthreadsnat.a: $(NATIVECODE_C_OBJS)
-@@ -46,9 +50,13 @@ st_stubs_n.o: st_stubs.c st_posix.h
- 	$(NATIVECC) -O -I../../asmrun -I../../byterun $(NATIVECCCOMPOPTS) $(SHAREDCCCOMPOPTS) -DNATIVE_CODE -DTARGET_$(ARCH) -DSYS_$(SYSTEM) -c st_stubs.c
- 	mv st_stubs.o st_stubs_n.o
- 
-+win32_n.$(O): st_stubs.c st_win32.h
-+	$(NATIVECC) -DNATIVE_CODE -O -I../../asmrun -I../../byterun $(NATIVECCCOMPOPTS) -c st_stubs.c
-+	mv st_stubs.$(O) win32_n.$(O)
-+
- threads.cma: $(THREAD_OBJS)
- 	$(MKLIB) -ocamlc '$(CAMLC)' -o threads $(THREAD_OBJS) \
--	  -cclib -lunix $(PTHREAD_LINK)
-+	  -cclib -lunix $(PTHREAD_LINK) -lcamlrun
- 
- # See remark above: force static linking of libthreadsnat.a
- threads.cmxa: $(THREAD_OBJS:.cmo=.cmx)
-diff --git a/otherlibs/systhreads/Makefile.nt b/otherlibs/systhreads/Makefile.nt
-index dc118b7..4b53d6e 100644
---- a/otherlibs/systhreads/Makefile.nt
-+++ b/otherlibs/systhreads/Makefile.nt
-@@ -21,6 +21,7 @@ CAMLOPT=../../boot/ocamlrun ../../ocamlopt -I ../../stdlib -I ../win32unix
- COMPFLAGS=-warn-error A -g
- MKLIB=../../boot/ocamlrun ../../tools/ocamlmklib
- CFLAGS=-I../../byterun $(EXTRACFLAGS)
-+LDOPTS=-L@libdir@
- 
- CAMLOBJS=thread.cmo mutex.cmo condition.cmo event.cmo threadUnix.cmo
- CMIFILES=$(CAMLOBJS:.cmo=.cmi)
-@@ -34,7 +35,7 @@ all: lib$(LIBNAME).$(A) $(LIBNAME).cma $(CMIFILES)
- allopt: lib$(LIBNAME).$(A) $(LIBNAME).cmxa $(LIBNAME).cmxs $(CMIFILES)
- 
- $(LIBNAME).cma: $(CAMLOBJS)
--	$(MKLIB) -o $(LIBNAME) -ocamlc "..\\..\\boot\\ocamlrun ..\\..\\ocamlc" -linkall $(CAMLOBJS) $(LINKOPTS)
-+	$(MKLIB) -o $(LIBNAME) -ocamlc "../../boot/ocamlrun ../../ocamlc" -linkall $(CAMLOBJS) $(LINKOPTS)
- 
- lib$(LIBNAME).$(A): $(COBJS)
- 	$(MKLIB) -o $(LIBNAME) $(COBJS) $(LDOPTS)
-@@ -46,7 +47,7 @@ st_stubs_b.$(O): st_stubs.c st_win32.h
- 
- 
- $(LIBNAME).cmxa: $(CAMLOBJS:.cmo=.cmx)
--	$(MKLIB) -o $(LIBNAME)nat -ocamlopt "..\\..\\boot\\ocamlrun ..\\..\\ocamlopt" -linkall $(CAMLOBJS:.cmo=.cmx) $(LINKOPTS)
-+	$(MKLIB) -o $(LIBNAME)nat -ocamlopt "../../boot/ocamlrun ../../ocamlopt" -linkall $(CAMLOBJS:.cmo=.cmx) $(LINKOPTS)
- 	mv $(LIBNAME)nat.cmxa $(LIBNAME).cmxa
- 	mv $(LIBNAME)nat.$(A) $(LIBNAME).$(A)
- 
-@@ -71,6 +72,7 @@ clean: partialclean
- install:
- 	cp dllthreads.dll $(STUBLIBDIR)/dllthreads.dll
- 	cp libthreads.$(A) $(LIBDIR)/libthreads.$(A)
-+	cd $(LIBDIR); $(RANLIB) libthreads.$(A)
- 	mkdir -p $(LIBDIR)/threads
- 	cp $(CMIFILES) threads.cma $(LIBDIR)/threads
- 	rm -f $(LIBDIR)/threads/stdlib.cma
-@@ -78,6 +80,7 @@ install:
- 
- installopt:
- 	cp libthreadsnat.$(A) $(LIBDIR)/libthreadsnat.$(A)
-+	cd $(LIBDIR); $(RANLIB) libthreadsnat.$(A)
- 	cp $(THREAD_OBJS:.cmo=.cmx) threads.cmxa threads.$(A) $(LIBDIR)/threads
- 	cp threads.cmxs $(LIBDIR)/threads
- 
-diff --git a/otherlibs/systhreads/st_win32.h b/otherlibs/systhreads/st_win32.h
-index da602b7..7e1dcb9 100644
---- a/otherlibs/systhreads/st_win32.h
-+++ b/otherlibs/systhreads/st_win32.h
-@@ -17,7 +17,7 @@
- 
- #define _WIN32_WINNT 0x0400
- #include <windows.h>
--#include <WinError.h>
-+#include <winerror.h>
- #include <stdio.h>
- #include <signal.h>
- 
-diff --git a/otherlibs/win32graph/Makefile.nt b/otherlibs/win32graph/Makefile.nt
-index 62c4678..e7c6d6b 100644
---- a/otherlibs/win32graph/Makefile.nt
-+++ b/otherlibs/win32graph/Makefile.nt
-@@ -18,10 +18,11 @@ COBJS=open.$(O) draw.$(O) events.$(O) dib.$(O)
- CAMLOBJS=graphics.cmo
- WIN32LIBS=$(call SYSLIB,kernel32) $(call SYSLIB,gdi32) $(call SYSLIB,user32)
- LINKOPTS=-cclib "\"$(WIN32LIBS)\""
--LDOPTS=-ldopt "$(WIN32LIBS)"
- 
- include ../Makefile.nt
- 
-+LDOPTS=-L@libdir@ -ldopt "$(WIN32LIBS)"
-+
- graphics.ml: ../graph/graphics.ml
- 	cp ../graph/graphics.ml graphics.ml
- graphics.mli: ../graph/graphics.mli
-diff --git a/otherlibs/win32unix/Makefile.nt b/otherlibs/win32unix/Makefile.nt
-index 76a1c19..c401bbb 100644
---- a/otherlibs/win32unix/Makefile.nt
-+++ b/otherlibs/win32unix/Makefile.nt
-@@ -40,7 +40,6 @@ LIBNAME=unix
- COBJS=$(ALL_FILES:.c=.$(O))
- CAMLOBJS=unix.cmo unixLabels.cmo
- LINKOPTS=-cclib $(WSOCKLIB)
--LDOPTS=-ldopt $(WSOCKLIB)
- EXTRACAMLFLAGS=-nolabels
- EXTRACFLAGS=-I../unix
- HEADERS=unixsupport.h socketaddr.h
-@@ -48,6 +47,8 @@ HEADERS=unixsupport.h socketaddr.h
- 
- include ../Makefile.nt
- 
-+LDOPTS=-L@libdir@ -ldopt $(WSOCKLIB)
-+
- clean::
- 	rm -f $(UNIX_FILES) $(UNIX_CAML_FILES)
- 
-diff --git a/utils/config.mlp b/utils/config.mlp
-index cdf67d4..b905059 100644
---- a/utils/config.mlp
-+++ b/utils/config.mlp
-@@ -86,11 +86,7 @@ let ext_asm = "%%EXT_ASM%%"
- let ext_lib = "%%EXT_LIB%%"
- let ext_dll = "%%EXT_DLL%%"
- 
--let default_executable_name =
--  match Sys.os_type with
--    "Unix" -> "a.out"
--  | "Win32" | "Cygwin" -> "camlprog.exe"
--  | _ -> "camlprog"
-+let default_executable_name = "camlprog.exe"
- 
- let systhread_supported = %%SYSTHREAD_SUPPORT%%;;
- 
-@@ -118,7 +114,7 @@ let print_config oc =
-   p "ext_asm" ext_asm;
-   p "ext_lib" ext_lib;
-   p "ext_dll" ext_dll;
--  p "os_type" Sys.os_type;
-+  p "os_type" "Win32";
-   p "default_executable_name" default_executable_name;
-   p_bool "systhread_supported" systhread_supported;
-   flush oc;
 -- 
-1.7.9.5
+1.8.1.2
 

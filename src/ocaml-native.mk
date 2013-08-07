@@ -3,18 +3,18 @@
 
 PKG             := ocaml-native
 $(PKG)_IGNORE   :=
-$(PKG)_VERSION  := 4.00.1
-$(PKG)_CHECKSUM := 5abf04cd4fccfcc980e8592995b9159014f23f53
+$(PKG)_VERSION  := 4.03
+$(PKG)_CHECKSUM := d696bacd2cbcd0288e51c8f3633d262b88b3f814
 $(PKG)_SUBDIR   := ocaml-$($(PKG)_VERSION)
 $(PKG)_FILE     := ocaml-$($(PKG)_VERSION).tar.gz
-$(PKG)_URL      := http://caml.inria.fr/pub/distrib/ocaml-$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
+#$(PKG)_URL      := http://caml.inria.fr/pub/distrib/ocaml-$(call SHORT_PKG_VERSION,$(PKG))/$($(PKG)_FILE)
 $(PKG)_DEPS     := gcc
 
-define $(PKG)_UPDATE
-    $(WGET) -q -O- 'http://caml.inria.fr/download.en.html' | \
-    $(SED) -n 's,.*ocaml-\([0-9][^>]*\)\.tar.*,\1,p' | \
-    head -1
-endef
+# define $(PKG)_UPDATE
+#     $(WGET) -q -O- 'http://caml.inria.fr/download.en.html' | \
+#     $(SED) -n 's,.*ocaml-\([0-9][^>]*\)\.tar.*,\1,p' | \
+#     head -1
+# endef
 
 define $(PKG)_BUILD
     # the following script would require ocamlbuild with an option '-ocamlfind'
