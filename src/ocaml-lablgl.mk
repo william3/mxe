@@ -36,7 +36,7 @@ define $(PKG)_BUILD
      echo 'MKDLL = $(TARGET)-ocamlmklib -o '; \
      echo 'LIBDIR = $(PREFIX)/$(TARGET)/lib/ocaml'; \
      echo 'DLLDIR = $(PREFIX)/$(TARGET)/lib/ocaml/stublibs'; \
-     echo 'INSTALLDIR = $(PREFIX)/$(TARGET)/lib/ocaml/lablGL'; \
+     echo 'INSTALLDIR = $(PREFIX)/$(TARGET)/lib/ocaml/lablgl'; \
      echo '#TOGLDIR=Togl'; \
      echo '#COPTS = $RPM_OPT_FLAGS'; \
      echo 'OCAMLDLL ='; \
@@ -47,11 +47,8 @@ define $(PKG)_BUILD
     cd '$(1)' && $(SED) -i 's/ocamlc/$(TARGET)-ocamlc/g' src/Makefile
     cd '$(1)' && $(SED) -i 's/camlp4o/$(TARGET)-camlp4o/g' src/Makefile
     $(MAKE) -C '$(1)' -j 1 lib libopt install
-    (echo 'version="$($(PKG)_VERSION)"'; \
-     echo 'directory="+lablGL"'; \
-     echo 'archive(byte) = "lablgl.cma"'; \
-     echo 'archive(native) = "lablgl.cmxa"') \
-     > $(PREFIX)/$(TARGET)/lib/ocaml/lablGL/META
+	cp -f $(1)/META.ex $(PREFIX)/$(TARGET)/lib/ocaml/lablgl/META
+
 endef
 
 $(PKG)_BUILD_x86_64-w64-mingw32 =

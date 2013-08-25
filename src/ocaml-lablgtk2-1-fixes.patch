@@ -3,10 +3,10 @@ See index.html for further information.
 
 Contains ad hoc patches for cross building.
 
-From 7a45f91cc0f2b0c1744b2ee725ca1999ad24a72b Mon Sep 17 00:00:00 2001
+From fd03fe66c74cd20b46c0363a34a93d4687dfe87b Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Thu, 13 Sep 2012 23:21:18 +0200
-Subject: [PATCH 1/6] split configure.in in configure.ac and ocaml.m4.
+Subject: [PATCH 1/7] split configure.in in configure.ac and ocaml.m4.
  Makefile.am links to src/Makefile
 
 
@@ -633,13 +633,13 @@ index 0000000..6431281
 +  AC_SUBST([OCAML_OS_TYPE])
 +])
 -- 
-1.7.9.5
+1.8.1.2
 
 
-From 412fb361bc02b4d1d4e5e3d3f6481595fcbf83b9 Mon Sep 17 00:00:00 2001
+From 58cb2d91cbbe2edf1f8c2dc9cdc392b8f367c8b6 Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Thu, 13 Sep 2012 23:29:39 +0200
-Subject: [PATCH 2/6] install = findlib-uninstall + findlib-install to remove
+Subject: [PATCH 2/7] install = findlib-uninstall + findlib-install to remove
  error if 'make install' is called a second time
 
 
@@ -657,17 +657,17 @@ index c498882..fda935e 100755
  
  MLLIBS = lablgtk.cma
 -- 
-1.7.9.5
+1.8.1.2
 
 
-From c17556b4d42274c4190a6b29aa10eef730aa4e21 Mon Sep 17 00:00:00 2001
+From a57b2233609f90cc210cfda21924d7fe7ff49b96 Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Thu, 13 Sep 2012 23:33:57 +0200
-Subject: [PATCH 3/6] allows install with 'make lablgtkopt' only
+Subject: [PATCH 3/7] allows install with 'make lablgtkopt' only
 
 
 diff --git a/src/Makefile b/src/Makefile
-index fda935e..54ae4b4 100755
+index fda935e..342063f 100755
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -391,42 +391,7 @@ old-uninstall:
@@ -726,13 +726,13 @@ index fda935e..54ae4b4 100755
  findlib-uninstall:
  	ocamlfind remove lablgtk2
 -- 
-1.7.9.5
+1.8.1.2
 
 
-From 19debade0cd5de6f3ea1d5771ecc627906e3c22f Mon Sep 17 00:00:00 2001
+From 3c5fba00b58ddc527c8932a5b272162ce3465201 Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Thu, 13 Sep 2012 23:36:37 +0200
-Subject: [PATCH 4/6] add prefixed ocamlfind support
+Subject: [PATCH 4/7] add prefixed ocamlfind support
 
 
 diff --git a/config.make.in b/config.make.in
@@ -748,7 +748,7 @@ index e689bda..0edb14a 100644
  CAMLDEP=@OCAMLDEP@
  OCAMLDOC=@OCAMLDOC@
 diff --git a/src/Makefile b/src/Makefile
-index 54ae4b4..aa09593 100755
+index 342063f..b8612e1 100755
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -391,12 +391,12 @@ old-uninstall:
@@ -778,18 +778,18 @@ index 54ae4b4..aa09593 100755
  	  do rm -f "$(BINDIR)"/$$f; done
  
 -- 
-1.7.9.5
+1.8.1.2
 
 
-From 8c5204c3b7db4449f66092f3bb58277bf3c4c777 Mon Sep 17 00:00:00 2001
+From 3babad89f1dc12dff887f14968d6cfa28dce7c36 Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Thu, 13 Sep 2012 23:39:01 +0200
-Subject: [PATCH 5/6] remove a command that is already called in uninstall,
- and which fails if used as is
+Subject: [PATCH 5/7] remove a command that is already called in uninstall, and
+ which fails if used as is
 
 
 diff --git a/src/Makefile b/src/Makefile
-index aa09593..e1f1c88 100755
+index b8612e1..dd17a49 100755
 --- a/src/Makefile
 +++ b/src/Makefile
 @@ -395,7 +395,6 @@ findlib-install:
@@ -801,13 +801,13 @@ index aa09593..e1f1c88 100755
  	cp lablgtk2$(XB) "$(BINDIR)"
  	if test -f lablgladecc$(XE); then \
 -- 
-1.7.9.5
+1.8.1.2
 
 
-From d7972344ade17f341ef658c6561943bc87f2fc00 Mon Sep 17 00:00:00 2001
+From cc7507aa358d8b012a1e0ab6d96d01f007b4eae2 Mon Sep 17 00:00:00 2001
 From: MXE
 Date: Sun, 30 Sep 2012 17:44:48 +0200
-Subject: [PATCH 6/6] use prefixed ocamlp4 tools if available
+Subject: [PATCH 6/7] use prefixed ocamlp4 tools if available
 
 
 diff --git a/configure.ac b/configure.ac
@@ -860,5 +860,52 @@ index 6431281..8dd2101 100644
  
  
 -- 
-1.7.9.5
+1.8.1.2
+
+
+From a38dbcde1fce81a234855c67d5e5c480a4e952e0 Mon Sep 17 00:00:00 2001
+From: MXE
+Date: Sun, 25 Aug 2013 12:09:49 +0200
+Subject: [PATCH 7/7] configure.ac : detect +lablgl instead of +lablGL
+
+
+diff --git a/configure.ac b/configure.ac
+index 205186a..13d0720 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -259,23 +259,18 @@ LABLGTK_PKG(GTKGL,gl,
+ 	    	gtkgl-2.0)
+ 
+ # Check for LablGL, if gtkgl detected. will use both or none
+-# Either adds LABLGLDIR, or clears USE_GTKGL,GTKGLDIR and GTKGLPKG
++# Either adds LABLGLDIR, or clears USE_GTKGL and GTKGLPKG
+ if test -n "$USE_GTKGL" ; then
+-      AC_MSG_CHECKING(lablGL directory)
+-      cat > conftest.ml << EOF
+-      open Raw
+-EOF
+-      if $OCAMLC -c -I "${LABLGLDIR:=+lablGL}" conftest.ml > /dev/null 2>&1 ; then
+-        AC_MSG_RESULT($LABLGLDIR)
++      AC_CHECK_OCAML_MODULE(lablgl,[in +lablgl directory],Raw,+lablgl)
++      if test "$lablgl" = "+lablgl" ; then
++        LABLGLDIR=+lablgl
+       else
+         if test $FORCE_GTKGL = yes ; then
+-	  AC_MSG_ERROR(gtkgl enforced but lablGL not found)
+-	else
+-	  AC_MSG_RESULT(no)
+-      	  unset USE_GTKGL
+-	  unset GTKGLPKG
+-          unset LABLGLDIR
+-	fi
++          AC_MSG_ERROR(gtkgl enforced but lablgl not found)
++        else
++          unset USE_GTKGL
++          unset GTKGLPKG
++        fi
+       fi
+ fi
+ 
+-- 
+1.8.1.2
 
